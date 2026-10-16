@@ -1,0 +1,14 @@
+[
+  {"id": "T-1001", "customer": "Hooli", "status": "open", "priority": "high",
+   "subject": "Uploads failing with E-2001",
+   "body": "Hi, this is Gavin Belson. Since Monday every upload fails with E-2001. Call me on +1 415 555 0134 or gavin.belson@hooli.example. We're happy to pay for more space, card on file is 4111 1111 1111 1111.",
+   "created": "2026-10-12"},
+  {"id": "T-1002", "customer": "Initech Ltd", "status": "open", "priority": "normal",
+   "subject": "SSO login error SSO-401 after cert rotation",
+   "body": "Peter Gibbons here (peter.g@initech.example, 212-555-0187). Our Okta admin rotated the signing cert yesterday and now everyone gets SSO-401.",
+   "created": "2026-10-14"},
+  {"id": "T-1003", "customer": "Umbrella Health Inc", "status": "pending", "priority": "normal",
+   "subject": "Refund request for unused seats",
+   "body": "We bought 80 seats in April but only use 60. Can we get a refund for 20 seats? Contact: alice.m@umbrella-health.example, PAN ABCDE1234F for our India entity invoice.",
+   "created": "2026-10-15"}
+]

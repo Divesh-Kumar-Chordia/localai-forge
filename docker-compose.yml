@@ -1,0 +1,20 @@
+# docker compose up --build   ->  http://localhost:8000
+# Prereq: Ollama running NATIVELY on the host (Docker on macOS has no Metal GPU access)
+# with llama3.1, llama3.2:3b and nomic-embed-text pulled.
+services:
+  forge:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      FORGE_OLLAMA_HOST: http://host.docker.internal:11434
+      FORGE_DB_PATH: /app/data/state/forge.db
+      FORGE_CHROMA_DIR: /app/data/state/chroma
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - forge-state:/app/data/state
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      retries: 30
+volumes:
+  forge-state:

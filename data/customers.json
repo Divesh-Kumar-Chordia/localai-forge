@@ -1,0 +1,14 @@
+[
+  {"id": "C-001", "company": "Globex Corporation", "plan": "Enterprise", "billing": "annual", "seats": 250,
+   "price_per_seat_month": 38.0, "region": "EU (Frankfurt)", "admin_email": "it-admin@globex.example",
+   "renewal_date": "2028-03-01", "csm": "priya.n@acmecloud.io"},
+  {"id": "C-002", "company": "Initech Ltd", "plan": "Business", "billing": "monthly", "seats": 42,
+   "price_per_seat_month": 25.0, "region": "US", "admin_email": "peter.g@initech.example",
+   "renewal_date": "2026-11-15", "csm": "sam.k@acmecloud.io"},
+  {"id": "C-003", "company": "Umbrella Health Inc", "plan": "Business", "billing": "annual", "seats": 80,
+   "price_per_seat_month": 20.0, "region": "US", "admin_email": "ops@umbrella-health.example",
+   "renewal_date": "2027-03-31", "csm": "priya.n@acmecloud.io"},
+  {"id": "C-004", "company": "Hooli", "plan": "Pro", "billing": "monthly", "seats": 12,
+   "price_per_seat_month": 12.0, "region": "US", "admin_email": "gavin@hooli.example",
+   "renewal_date": "2026-11-02", "csm": "sam.k@acmecloud.io"}
+]

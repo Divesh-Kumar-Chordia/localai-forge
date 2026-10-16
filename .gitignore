@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+data/forge.db*
+data/chroma/
+data/logs/
+data/uploads/
+data/state/
+scripts/lora/data/
+scripts/lora/adapters/
+.env
+.DS_Store
