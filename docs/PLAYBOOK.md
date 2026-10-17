@@ -210,7 +210,11 @@ Prompting "return JSON" alone gives ~95% validity on small models, which isn't e
 - Route hard queries to the larger model.
 - Don't cache ungrounded answers.
 
-**Show in app.** Chat faithfulness badge plus unsupported sentences; "Who is the CEO?" abstains. Activate prompt v2 and watch it invent a CEO.
+**Two real failure modes I hit.** (1) *False positive:* the checker didn't see the question, so "No, SCIM is Enterprise only [1]" was flagged; fixed by giving it the question. (2) *False negative:* the answer said Business restores for "90 days" (the Pro value) and the check passed because "90 days" is in the source. Value-to-entity attribution in lists is a known weak spot of sentence-level NLI-style checks.
+
+**Over-correction risk.** A strict abstain rule cuts hallucinations but causes over-abstention (5/47 here). The fix is a prompt that answers *implied* facts, verified by the eval gate rather than by vibes.
+
+**Show in app.** Chat faithfulness badge plus unsupported sentences; "Who is the CEO?" abstains. Activate prompt v2 and watch grounding fall to 0%.
 
 ## 15. Build an eval suite for a customer support bot
 **Dataset.**
@@ -225,6 +229,8 @@ Prompting "return JSON" alone gives ~95% validity on small models, which isn't e
 
 **Process.** Offline in CI as a gate; online on sampled traffic, with humans reviewing disagreements.
 
+**Real numbers from this app (47 questions, prompt v3):** pass 80.9%, faithfulness 0.973, hallucination 4.3%, abstention accuracy 0.894, citation coverage 0.95. Reading every failure by hand found the *real* problem: 5 over-abstentions where the answer had to be inferred, not retrieval. Three "failures" were bugs in my own eval harness. **Always read the failures before trusting the number.**
+
 **Show in app.** Evals page (47 questions, A/B, history), Retrieval benchmark, Prompt gate.
 
 ## 16. LLM-as-a-judge: how to make it trustworthy
@@ -238,7 +244,9 @@ Prompting "return JSON" alone gives ~95% validity on small models, which isn't e
 - Re-calibrate when the judge model changes.
 - Humans spot-check where the judge disagrees with itself.
 
-**Show in app.** Evals → Judge calibration (8B vs 3B against 20 human labels) and Pairwise. Name the limitation honestly: here both judge and generator are Llama.
+**What I actually measured.** A holistic 1–5 rubric on Llama 3.1 8B reached only κ 0.52 against my 20 human labels. It docked "$9.60 per user per month billed annually" for "missing that it's billed annually". Redesigned so the model only makes small checkable decisions (is key fact X present? anything contradicted?), the **score is computed in code**, numbers are compared deterministically, and out-of-scope questions are graded by rule: **κ 0.80, agreement 0.90, 0 false passes**. Lesson: *constrain the judge's job until a small model can do it reliably, then measure it like any other model.*
+
+**Show in app.** Evals → Judge calibration (both designs against 20 human labels) and Pairwise. Name the limitation honestly: here both judge and generator are Llama.
 
 ## 17. Block prompt injection in a tool-using agent
 **Threat.** *Indirect* injection: instructions hidden in retrieved docs, emails or web pages. The model can't reliably tell data from instructions, so **assume the model will be compromised and limit the blast radius**:
@@ -322,7 +330,9 @@ Redact **before** logs, traces, caches and embeddings too. Tune for recall (a mi
 - **Rollback:** flip the pointer (seconds, no deploy); automatic on metric breach.
 - Keep an audit log. Remember to invalidate caches keyed on the old version.
 
-**Show in app.** Prompts page: activate `rag_answer` v2 (drops grounding), ask "Who is the CEO of Acme Cloud?" (it invents someone), then Rollback. Run the eval gate on v2 and watch it get BLOCKED.
+**Show in app.** Prompts page: activate `rag_answer` v2 (drops the citation and abstain rules), ask "Who is the CEO of Acme Cloud?" (an uncited, chatty answer; grounding falls to 0%), then Rollback. Run the eval gate on v2: BLOCKED on citation coverage 0.9 → 0.0, faithfulness 1.0 → 0.875, pass rate 0.75 → 0.625.
+
+**War story (real).** My first gate run *promoted* the bad prompt. It sampled the first 6 golden questions (all easy pricing, no out-of-scope questions), citations weren't a gated metric, and the judge was biased toward verbose answers. Fixes: stratified sampling, citation coverage gated, a fact-checklist judge. A gate is only as good as its sample and its metrics, so test the gate itself with a known-bad change.
 
 ## 25. Design ChatGPT-style chat for 1M daily users
 **Back of the envelope.** 1M DAU × 10 messages = 10M messages/day ≈ 115/s average, ~500/s peak. At ~500 output tokens each, that's ~250K tokens/s at peak, which means hundreds of GPUs with vLLM plus aggressive caching and routing.

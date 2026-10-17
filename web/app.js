@@ -787,7 +787,7 @@ VIEWS.labs = (main) => {
 VIEWS.evals = async (main) => {
   main.innerHTML = `<div class="page">${head("Evals & Judge", "47 golden questions across pricing, policy, error codes, contracts, multi-doc and out-of-scope.")}
     ${angle("#15 #16 #14", `**Suite (#15):** stratified golden set with references and relevant docs, including **out-of-scope** questions where the bot must abstain. Metrics: correctness (judge vs reference), faithfulness, hallucination rate, abstention accuracy, TTFT. Run it in CI as a gate and on sampled production traffic.
-**Trustworthy judge (#16):** anchored rubric, reasoning before score, temperature 0, structured output; **calibrate against human labels** (Cohen's κ, false-pass rate); **pairwise with position swap**; a different model family than the generator (here both are Llama, a limitation worth naming).`)}
+**Trustworthy judge (#16):** don't ask an 8B model for a holistic 1–5 score; it rewarded verbosity (κ 0.52 vs humans). Instead it makes small checkable decisions (is key fact X present? contradicted?), the **score is computed in code**, numbers are checked deterministically, and out-of-scope questions are graded by rule. Result: **κ 0.80, 0 false passes** on 20 human labels. Also: pairwise with position swap; a different model family than the generator (here both are Llama, a limitation worth naming).`)}
     <div class="grid g2">
       <div class="card"><h3>Run an eval</h3>
         <div class="field"><label class="lbl">Configuration</label><select class="input" id="eCfg">${opts([
@@ -796,7 +796,7 @@ VIEWS.evals = async (main) => {
         <div class="field"><label class="lbl">Questions</label><input class="input" id="eN" type="number" value="6" min="2" max="47"></div>
         <button class="btn primary" id="eGo">Run</button><p class="small muted">≈15–25 s per question on local 8B (answer + grounding + judge).</p><div id="eOut"></div></div>
       <div class="card"><h3>Judge calibration vs 20 human labels</h3><p class="small muted">Correct answers, subtly wrong numbers, hallucinations, correct abstentions. Measures how often the judge agrees with the human.</p>
-        <button class="btn sm primary" id="jGo">Calibrate (≈2–4 min)</button><div id="jOut" style="margin-top:12px"></div>
+        <button class="btn sm primary" id="jGo">Calibrate both judge designs (≈4–6 min)</button><div id="jOut" style="margin-top:12px"></div>
         <hr style="border:none;border-top:1px solid var(--border);margin:16px 0"><h3>Pairwise with position swap</h3>
         <div class="field"><input class="input" id="pq" value="Can I get a refund on a monthly plan after 10 days?"></div>
         <div class="field"><textarea class="input" id="pa2" rows="2">No. Monthly plans are refundable only within 7 days of the first charge; you can cancel to stop future charges.</textarea></div>
@@ -807,8 +807,8 @@ VIEWS.evals = async (main) => {
   const hist = async () => {
     try {
       const runs = await api("/eval/runs");
-      $("#eHist").innerHTML = runs.length ? `<table class="t"><thead><tr><th>Run</th><th class="num">N</th><th class="num">Pass rate</th><th class="num">Faithfulness</th><th class="num">Hallucination</th><th class="num">Abstention</th><th class="num">TTFT p50</th></tr></thead><tbody>${runs.map((r) => {
-        const m = r.metrics; return `<tr><td class="small">${esc(r.name.slice(0, 70))}</td><td class="num">${m.n}</td><td class="num">${m.pass_rate}</td><td class="num">${m.faithfulness_avg ?? "–"}</td><td class="num">${m.hallucination_rate ?? "–"}</td><td class="num">${m.abstention_accuracy}</td><td class="num">${fmtMs(m.ttft_p50_ms)}</td></tr>`;
+      $("#eHist").innerHTML = runs.length ? `<table class="t"><thead><tr><th>Run</th><th class="num">N</th><th class="num">Pass rate</th><th class="num">Faithfulness</th><th class="num">Hallucination</th><th class="num">Abstention</th><th class="num">Citations</th><th class="num">TTFT p50</th></tr></thead><tbody>${runs.map((r) => {
+        const m = r.metrics; return `<tr><td class="small">${esc(r.name.slice(0, 70))}</td><td class="num">${m.n}</td><td class="num">${m.pass_rate}</td><td class="num">${m.faithfulness_avg ?? "–"}</td><td class="num">${m.hallucination_rate ?? "–"}</td><td class="num">${m.abstention_accuracy}</td><td class="num">${m.citation_coverage_avg ?? "–"}</td><td class="num">${fmtMs(m.ttft_p50_ms)}</td></tr>`;
       }).join("")}</tbody></table>` : `<div class="muted">No runs yet.</div>`;
     } catch (e) { $("#eHist").innerHTML = errBox(e); }
   };
@@ -845,7 +845,8 @@ VIEWS.evals = async (main) => {
 VIEWS.prompts = async (main, params) => {
   main.innerHTML = `<div class="page">${head("Prompts", "Versioned like config: an active pointer, an audit log, one-click rollback, and an eval gate for promotion.")}
     ${angle("#24", `Rollback = flip the pointer (seconds, no deploy). Every trace records \`prompt@vN\`, so a quality drop is attributable. Ship by eval gate → canary (5% by user hash) → watch grounding / thumbs-down → promote; auto-rollback on breach.
-**Demo:** activate \`rag_answer\` v2 (drops grounding rules), ask *"Who is the CEO of Acme Cloud?"* in Chat (it invents one), then **Rollback**. Or run the gate on v2 and watch it get blocked.`)}
+**Demo:** activate \`rag_answer\` v2 (a "friendlier" rewrite that silently drops the citation and abstain rules), ask *"Who is the CEO of Acme Cloud?"* in Chat: you get an uncited, chatty non-answer and grounding drops to 0%. Then **Rollback**. Or **Promote via gate** on v2 and watch it get blocked on citation coverage.
+**War story:** the first gate run *passed* v2, because it sampled the first 6 questions (all easy pricing) and used a biased judge. Fixes: stratified sampling, citation coverage as a gated metric, and a fact-checklist judge.`)}
     <div id="pOut">${loading()}</div></div>`;
   let data;
   try { data = await api("/prompts"); } catch (e) { $("#pOut").innerHTML = errBox(e); return; }

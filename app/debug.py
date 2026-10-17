@@ -24,7 +24,7 @@ def diagnose(question: str, expected_doc: str | None = None, expected_text: str 
     tpl, _ = prompts.get("rag_answer")
     prompt = prompts.render(tpl, context=_context(final), question=question, memory="")
     gen = llm.chat([{"role": "user", "content": prompt}], settings.smart_model, 0.1)
-    g = grounding.check(gen["text"], final)
+    g = grounding.check(gen["text"], final, question=question)
 
     stages = []
     verdict, fixes = "looks healthy", []

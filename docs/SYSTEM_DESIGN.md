@@ -182,6 +182,19 @@ The **corpus version** is a SHA-1 hash of every chunk's id and content. It chang
 ### 3.6 Routing
 `rules` (zero-latency features: length, reasoning keywords, multi-part, evidence spread, legal top hit), `cascade` (3B drafts → grounding check → escalate to 8B if unsupported), or forced. On 16 GB machines a **single-model mode** (`.env`) avoids weight swapping between models.
 
+### 3.6b Judge (evals)
+The LLM judge never produces the score itself:
+1. **Rules first.** Out-of-scope references pass only if the answer abstains. A numeric contradiction (no shared numbers, ignoring identifiers from the question) scores 1.
+2. **Fact checklist.** The model lists up to 4 key facts in the reference and marks each as present or absent in the candidate, plus whether the candidate contradicts the reference.
+3. **Score in code.** A contradiction scores 1; all facts present scores 5; ≥ ⅔ scores 4; and so on. Pass = score ≥ 4.
+
+Calibrated against 20 human labels:
+
+| Judge | Agreement | κ | False pass |
+|---|---|---|---|
+| Holistic 1–5 rubric (8B) | 0.75 | 0.52 | 0 |
+| **Fact checklist + rules (8B)** | **0.90** | **0.80** | **0** |
+
 ### 3.7 Grounding (hallucination detection)
 1. Split the answer into factual sentences (drop preambles such as "Based on the sources…").
 2. One structured call with a schema of **exactly N verdicts** (`minItems = maxItems = N`), each `{index, evidence_quote ≤ 200 chars, supported, source}`. Quoting before the verdict acts as cheap chain-of-thought.
@@ -285,6 +298,28 @@ Chroma collections: `chunks` (metadata: doc, strategy, section, parent_id) and `
 | Hybrid + rerank | 0.930 |
 | Legal chunking + hybrid + rerank | **0.977** |
 
+### End-to-end eval: 47 golden questions, production config (prompt v3)
+
+| Metric | Value |
+|---|---|
+| Pass rate (judge score ≥ 4) | **80.9%** |
+| Faithfulness (sentence-level) | 0.973 |
+| Hallucination rate (answers with any unsupported sentence) | 4.3% |
+| Abstention accuracy | 0.894 |
+| Citation coverage | 0.95 |
+| TTFT p50 / total p50 | 3.4 s / 11.7 s |
+
+By category: out-of-scope 4/4 · policy 8/9 · technical 8/9 · pricing 7/8 · contract 9/11 · security 2/4 · multi-doc 0/2.
+
+**Error analysis of the 9 failures** (each read by hand):
+- **Over-abstention (5): the main real failure.** The right chunk *was* in the prompt every time, but the answer had to be inferred ("SCIM is Enterprise only" → "not on Business"; "below 99.0% → 25%" for 98%). The 8B model treated "not stated verbatim" as "not in the sources".
+- **Per-plan value mix-up (1):** gave Pro's 90 days instead of Business's 1 year. The grounding check missed it because "90 days" *is* in the source.
+- **Eval errors (3), fixed in the harness:** the numeric rule read section numbers (9.2/9.3) as values; two golden references were badly worded.
+
+**Prompt v4 (candidate)** adds "answer what the sources imply" and "use the value for the plan asked about". On the 10 previously failing questions, pass rate went 0.2 → 0.6 and abstention accuracy 0.5 → 0.9. Its first faithfulness drop (0.9 → 0.7) was a **grounding false positive**: the checker never saw the question, so "No, SCIM is Enterprise only [1]" looked unsupported. Fixed with grounding v2, which includes the question.
+
+**Status:** v4 is registered but **not promoted**. The full 47-question gate (v3 vs v4) needs ~1 hour of local inference and was stopped when the 16 GB machine hit ~34 GB of swap. Until v4 passes the gate, production stays on v3, which is exactly what the gate is for.
+
 ### Failures found while building, and their fixes
 | Symptom | Root cause | Fix |
 |---|---|---|
@@ -297,6 +332,12 @@ Chroma collections: `chunks` (metadata: doc, strategy, section, parent_id) and `
 | Stale cache after edits | Corpus version hashed ids, not content | Hash content |
 | 60 s answers | 16 GB machine swapping between 8B and 3B weights | Single-model mode; grounding on the answering model |
 | Contract terms presented as general policy | Prompt didn't scope customer-specific docs | Prompt v3 attribution rule, shipped via the registry |
+| Eval gate **promoted** a bad prompt | Sampled the first 6 golden rows (all easy pricing); holistic judge favoured verbose answers; citations not gated | Stratified sampling, citation coverage gated, fact-checklist judge. The gate now blocks v2 (citations 0.9 → 0.0) |
+| LLM judge disagreed with humans (κ 0.52) | 8B model asked for a holistic 1–5 score penalised terse correct answers | Model only marks key facts present/contradicted; score computed in code; numeric and out-of-scope checks by rule → κ 0.80, 0 false passes |
+| Grounding check flagged correct "No, …" answers | The checker never saw the question, so a yes/no answer looked like an unsupported claim | Grounding prompt v2 includes the question |
+| Over-abstention on inferable answers (5/47) | Prompt said "abstain if sources don't contain it"; the 8B model read that literally | Prompt v4 (answer implied facts): 0.2 → 0.6 pass on the failing subset; awaiting a full gate |
+| `mlx-lm` vanished after install | `uv run` syncs the project env exactly and removed it | Run training tools via `uvx` in an isolated env |
+| UI kept talking to stale code after restart | Graceful shutdown hung on an in-flight request; new server couldn't bind the port | `run.sh` waits for the port to free, then force-kills |
 
 ---
 

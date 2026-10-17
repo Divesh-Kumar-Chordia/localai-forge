@@ -161,7 +161,7 @@ async def run_chat(cfg: ChatConfig) -> AsyncIterator[tuple[str, dict]]:
             with tracing.span("cascade_cheap_draft", {"model": settings.cheap_model}) as s:
                 d = await asyncio.to_thread(llm.chat, msgs, settings.cheap_model, 0.1)
                 tokens["in"] += d["tokens_in"]; tokens["out"] += d["tokens_out"]
-                g = await asyncio.to_thread(grounding.check, d["text"], hits, settings.smart_model)
+                g = await asyncio.to_thread(grounding.check, d["text"], hits, settings.smart_model, standalone)
                 s.set({"draft": d["text"], "faithfulness": g.get("faithfulness")})
             if (g.get("faithfulness") or 0) >= 0.8:
                 meta["route"] = {"model": settings.cheap_model, "reason": f"cascade: cheap draft grounded ({g['faithfulness']})"}
@@ -207,7 +207,7 @@ async def run_chat(cfg: ChatConfig) -> AsyncIterator[tuple[str, dict]]:
             with tracing.span("grounding_check") as s:
                 # Default: verify with the model that just answered - it's already in memory, so no
                 # model swap (on a 16 GB machine a swap costs tens of seconds).
-                g = await asyncio.to_thread(grounding.check, final_text, hits, cfg.grounding_model or rt["model"])
+                g = await asyncio.to_thread(grounding.check, final_text, hits, cfg.grounding_model or rt["model"], standalone)
                 s.set(g)
                 meta["faithfulness"] = g.get("faithfulness")
                 tokens["in"] += g.get("judge_tokens", 0)

@@ -43,7 +43,7 @@ def is_abstention(answer: str) -> bool:
     return ABSTAIN in a or "i don't know" in a or "not in the knowledge base" in a or "couldn't find" in a
 
 
-def check(answer: str, sources: list[dict], model: str | None = None) -> dict:
+def check(answer: str, sources: list[dict], model: str | None = None, question: str = "") -> dict:
     if is_abstention(answer):
         return {"faithfulness": 1.0, "abstained": True, "sentences": [], "unsupported": []}
     sents = split_sentences(answer)
@@ -65,7 +65,8 @@ def check(answer: str, sources: list[dict], model: str | None = None) -> dict:
                           verdicts=(list[SentenceVerdict], Field(min_length=n, max_length=n)))
     try:
         res, info = llm.structured(
-            [{"role": "user", "content": prompts.render(tpl, context=context, sentences=numbered)}],
+            [{"role": "user", "content": prompts.render(tpl, context=context, sentences=numbered,
+                                                        question=question or "(not provided)")}],
             schema, model=model or settings.smart_model, retries=1, max_tokens=120 * n + 60)
         by_idx = {v.index: v for v in res.verdicts}
     except Exception as e:

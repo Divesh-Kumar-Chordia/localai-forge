@@ -9,11 +9,12 @@ judge trust - calibrate each judge model against human labels: agreement + Cohen
              and pairwise comparison with position swap to expose position bias.
 """
 import json
+import re
 import statistics
 import time
 import uuid
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app import db, grounding, llm, prompts
 from app.config import ROOT, settings
@@ -23,11 +24,26 @@ from app.rag.retrieve import retrieve
 EVAL_DIR = ROOT / "data" / "eval"
 
 
-def golden(limit: int | None = None, category: str | None = None) -> list[dict]:
+def golden(limit: int | None = None, category: str | None = None, stratified: bool = True) -> list[dict]:
     rows = [json.loads(l) for l in (EVAL_DIR / "golden.jsonl").read_text().splitlines() if l.strip()]
     if category:
         rows = [r for r in rows if r["category"] == category]
-    return rows[:limit] if limit else rows
+    if not limit or limit >= len(rows):
+        return rows
+    if not stratified:
+        return rows[:limit]
+    # Round-robin across categories: a small sample must still include out-of-scope and contract
+    # questions. (The first gate run took the first 6 rows: all easy pricing, and passed a bad prompt.)
+    by_cat: dict[str, list] = {}
+    for r in rows:
+        by_cat.setdefault(r["category"], []).append(r)
+    out, i = [], 0
+    while len(out) < limit:
+        for cat in by_cat.values():
+            if i < len(cat) and len(out) < limit:
+                out.append(cat[i])
+        i += 1
+    return out
 
 
 # ------------------------------------------------------------------ retrieval
@@ -63,12 +79,57 @@ class JudgeOut(BaseModel):
     score: int
 
 
+class KeyFact(BaseModel):
+    fact: str
+    present: bool
+
+
+class FactJudgeOut(BaseModel):
+    key_facts: list[KeyFact] = Field(min_length=1, max_length=4)
+    contradicts: bool
+    contradiction: str = Field(default="", max_length=200)
+
+
 class PairOut(BaseModel):
     reasoning: str
     winner: str  # "A" | "B" | "tie"
 
 
 def judge(question: str, reference: str, answer: str, model: str | None = None) -> dict:
+    """Trustworthy-judge design (#16): the LLM only makes small, checkable decisions (is fact X present?
+    is anything contradicted?); the score is computed in code. Out-of-scope references are graded
+    deterministically. A holistic 1-5 score from an 8B model proved biased toward verbose answers."""
+    if reference.lower().startswith("unknown"):
+        ok = grounding.is_abstention(answer)
+        return {"score": 5 if ok else 1, "reasoning": "deterministic: " + ("abstained" if ok else "answered an out-of-scope question"),
+                "judge": "rule"}
+    # Deterministic numeric check first: an 8B judge missed "600 requests/min" vs a reference of 3,000.
+    def num(t: str) -> set[str]:
+        t = re.sub(r"\[\d+\]", "", t)                                                  # citations
+        t = re.sub(r"(?i)\b(section|sections|clause|article|§)\s*\d+(\.\d+)*", "", t)  # references, not values
+        return {n.replace(",", "").rstrip(".") for n in re.findall(r"\d[\d,]*(?:\.\d+)?", t)}
+    q_n = num(question)                        # identifiers from the question (E-2001, T-1001) aren't answers
+    ref_n, ans_n = num(reference) - q_n, num(answer) - q_n
+    if ref_n and ans_n and not (ref_n & ans_n):
+        return {"score": 1, "reasoning": f"deterministic: answer numbers {sorted(ans_n)} share none of reference {sorted(ref_n)}",
+                "judge": "rule"}
+    tpl, _ = prompts.get("judge_facts")
+    out, _ = llm.structured([{"role": "user", "content": prompts.render(
+        tpl, question=question, reference=reference, answer=answer)}], FactJudgeOut,
+        model=model or settings.smart_model, temperature=0, max_tokens=500)
+    present = sum(f.present for f in out.key_facts)
+    frac = present / len(out.key_facts)
+    if out.contradicts:
+        score = 1
+    else:
+        score = 5 if frac == 1 else 4 if frac >= 0.66 else 3 if frac >= 0.34 else 2
+    facts = "; ".join(f"{'✓' if f.present else '✗'} {f.fact}" for f in out.key_facts)
+    return {"score": score, "reasoning": f"{facts}" + (f" | CONTRADICTS: {out.contradiction}" if out.contradicts else ""),
+            "judge": model or settings.smart_model}
+
+
+def judge_holistic(question: str, reference: str, answer: str, model: str | None = None) -> dict:
+    """The original 1-5 rubric judge, kept for comparison in calibration."""
     tpl, v = prompts.get("judge")
     out, _ = llm.structured([{"role": "user", "content": prompts.render(
         tpl, question=question, reference=reference, answer=answer)}], JudgeOut,
@@ -101,18 +162,21 @@ def _kappa(a: list[bool], b: list[bool]) -> float:
 
 
 def calibrate_judges(models: list[str] | None = None, pass_at: int = 4) -> list[dict]:
+    """Compare judge designs (fact-checklist vs holistic rubric) x judge models against human labels."""
     labels = [json.loads(l) for l in (EVAL_DIR / "judge_labels.jsonl").read_text().splitlines() if l.strip()]
     out = []
-    for m in models or [settings.smart_model, settings.cheap_model]:
+    combos = [(m, name, fn) for m in dict.fromkeys(models or [settings.smart_model, settings.cheap_model])
+              for name, fn in (("fact-checklist", judge), ("holistic-rubric", judge_holistic))]
+    for m, design, judge_fn in combos:
         preds, rows = [], []
         for lab in labels:
-            j = judge(lab["question"], lab["reference"], lab["answer"], m)
+            j = judge_fn(lab["question"], lab["reference"], lab["answer"], m)
             p = j["score"] >= pass_at
             preds.append(p)
             rows.append({"id": lab["id"], "human": lab["human_pass"], "judge_score": j["score"], "judge_pass": p,
                          "agree": p == lab["human_pass"], "reasoning": j["reasoning"][:200]})
         human = [l["human_pass"] for l in labels]
-        out.append({"judge": m, "n": len(labels),
+        out.append({"judge": f"{m} · {design}", "n": len(labels),
                     "agreement": round(sum(r["agree"] for r in rows) / len(rows), 3),
                     "cohens_kappa": _kappa(preds, human),
                     "false_pass": sum(1 for r in rows if r["judge_pass"] and not r["human"]),
@@ -123,9 +187,10 @@ def calibrate_judges(models: list[str] | None = None, pass_at: int = 4) -> list[
 
 # ------------------------------------------------------------------ generation
 async def generation_eval(config: dict, limit: int | None = None, judge_model: str | None = None,
-                          name: str = "") -> dict:
+                          name: str = "", ids: list[str] | None = None) -> dict:
     rows = []
-    for q in golden(limit):
+    qs = [q for q in golden() if q["id"] in ids] if ids else golden(limit)
+    for q in qs:
         cfg = ChatConfig(message=q["question"], session_id=f"eval-{uuid.uuid4().hex[:6]}",
                          **{**{"use_cache": False, "memory": False}, **config})
         t = time.time()
@@ -140,12 +205,14 @@ async def generation_eval(config: dict, limit: int | None = None, judge_model: s
             "id": q["id"], "category": q["category"], "question": q["question"], "answer": ans,
             "score": j["score"], "judge_reasoning": j["reasoning"][:300],
             "faithfulness": r["grounding"].get("faithfulness"),
+            "citation_coverage": r["grounding"].get("citation_coverage"),
             "abstained": abstained, "abstain_correct": abstained == out_of_scope,
             "retrieved_expected": bool(set(docs) & set(q["expected_docs"])) if q["expected_docs"] else None,
             "model": r["meta"].get("route", {}).get("model"), "ttft_ms": r.get("ttft_ms") or r["meta"].get("ttft_ms"),
             "total_ms": round(ms), "trace_id": r.get("trace_id"),
         })
     f = [r["faithfulness"] for r in rows if r["faithfulness"] is not None]
+    cc = [r["citation_coverage"] for r in rows if r.get("citation_coverage") is not None]
     ttfts = [r["ttft_ms"] for r in rows if r["ttft_ms"]]
     metrics = {
         "n": len(rows),
@@ -154,6 +221,7 @@ async def generation_eval(config: dict, limit: int | None = None, judge_model: s
         "faithfulness_avg": round(statistics.mean(f), 3) if f else None,
         "hallucination_rate": round(sum(1 for x in f if x < 1.0) / len(f), 3) if f else None,
         "abstention_accuracy": round(sum(r["abstain_correct"] for r in rows) / len(rows), 3),
+        "citation_coverage_avg": round(statistics.mean(cc), 3) if cc else None,
         "ttft_p50_ms": round(statistics.median(ttfts)) if ttfts else None,
         "latency_p50_ms": round(statistics.median(r["total_ms"] for r in rows)),
         "models": {m: sum(1 for r in rows if r["model"] == m) for m in {r["model"] for r in rows}},
@@ -196,6 +264,8 @@ async def promotion_gate(name: str, candidate: int, limit: int = 8) -> dict:
         reasons.append(f"faithfulness {bm['faithfulness_avg']} -> {cm['faithfulness_avg']}")
     if cm["abstention_accuracy"] < bm["abstention_accuracy"] - 0.1:
         reasons.append(f"abstention {bm['abstention_accuracy']} -> {cm['abstention_accuracy']}")
+    if (cm.get("citation_coverage_avg") or 0) < (bm.get("citation_coverage_avg") or 0) - 0.2:
+        reasons.append(f"citation coverage {bm.get('citation_coverage_avg')} -> {cm.get('citation_coverage_avg')}")
     passed = not reasons
     if passed:
         prompts.set_active(name, candidate, action="promote(gated)")

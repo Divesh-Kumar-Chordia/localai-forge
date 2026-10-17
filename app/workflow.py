@@ -83,7 +83,7 @@ def writer(s: WState) -> WState:
 def reviewer(s: WState) -> WState:
     sources = [h for f in s["findings"] for h in f["sources"]]
     with tracing.span("reviewer", None, trace_id=s["trace_id"]) as sp:
-        g = grounding.check(s["draft"], sources, settings.smart_model)
+        g = grounding.check(s["draft"], sources, settings.smart_model, s["task"])
         sp.set({"faithfulness": g.get("faithfulness"), "unsupported": g.get("unsupported")})
     return {"review": g, "revisions": s.get("revisions", 0) + 1}
 

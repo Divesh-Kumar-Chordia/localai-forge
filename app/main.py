@@ -273,11 +273,12 @@ class GenEvalReq(BaseModel):
     limit: int | None = 10
     judge_model: str | None = None
     name: str = ""
+    ids: list[str] | None = None
 
 
 @app.post("/eval/generation")
 async def eval_generation(r: GenEvalReq):
-    return await evals.generation_eval(r.config, r.limit, r.judge_model, r.name)
+    return await evals.generation_eval(r.config, r.limit, r.judge_model, r.name, r.ids)
 
 
 @app.get("/eval/runs")
