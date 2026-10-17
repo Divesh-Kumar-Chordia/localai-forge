@@ -318,7 +318,17 @@ By category: out-of-scope 4/4 · policy 8/9 · technical 8/9 · pricing 7/8 · c
 
 **Prompt v4 (candidate)** adds "answer what the sources imply" and "use the value for the plan asked about". On the 10 previously failing questions, pass rate went 0.2 → 0.6 and abstention accuracy 0.5 → 0.9. Its first faithfulness drop (0.9 → 0.7) was a **grounding false positive**: the checker never saw the question, so "No, SCIM is Enterprise only [1]" looked unsupported. Fixed with grounding v2, which includes the question.
 
-**Status:** v4 is registered but **not promoted**. The full 47-question gate (v3 vs v4) needs ~1 hour of local inference and was stopped when the 16 GB machine hit ~34 GB of swap. Until v4 passes the gate, production stays on v3, which is exactly what the gate is for.
+**Status: v4 passed the full gate and is in production.** Both versions were judged with the same fixed harness (judge_facts v2, grounding v2) on all 47 questions:
+
+| Metric | v3 | **v4** |
+|---|---|---|
+| Pass rate | 85.1% | **95.7%** |
+| Abstention accuracy | 0.894 | **0.979** |
+| Faithfulness | 1.0 | 0.972 |
+| Citation coverage | 0.958 | 0.933 |
+| TTFT p50 / total p50 | 3.4 s / 12.6 s | **2.9 s / 8.5 s** |
+
+The trade-off is real: answering implied facts means 2/47 answers carry one flagged sentence. On inspection, one is an uncited lead-in ("Yes, you can pause…") to a fully cited answer. The remaining genuine error is Q16 (Pro's 90 days given for Business's 1 year), which neither the prompt rule nor the grounding check catches. That's the known weak spot: value-to-entity attribution in lists. Next fix: structured extraction of per-plan tables at ingest time.
 
 ### Failures found while building, and their fixes
 | Symptom | Root cause | Fix |
@@ -335,7 +345,7 @@ By category: out-of-scope 4/4 · policy 8/9 · technical 8/9 · pricing 7/8 · c
 | Eval gate **promoted** a bad prompt | Sampled the first 6 golden rows (all easy pricing); holistic judge favoured verbose answers; citations not gated | Stratified sampling, citation coverage gated, fact-checklist judge. The gate now blocks v2 (citations 0.9 → 0.0) |
 | LLM judge disagreed with humans (κ 0.52) | 8B model asked for a holistic 1–5 score penalised terse correct answers | Model only marks key facts present/contradicted; score computed in code; numeric and out-of-scope checks by rule → κ 0.80, 0 false passes |
 | Grounding check flagged correct "No, …" answers | The checker never saw the question, so a yes/no answer looked like an unsupported claim | Grounding prompt v2 includes the question |
-| Over-abstention on inferable answers (5/47) | Prompt said "abstain if sources don't contain it"; the 8B model read that literally | Prompt v4 (answer implied facts): 0.2 → 0.6 pass on the failing subset; awaiting a full gate |
+| Over-abstention on inferable answers (5/47) | Prompt said "abstain if sources don't contain it"; the 8B model read that literally | Prompt v4 (answer implied facts) passed the full gate: pass 85.1% → 95.7%, abstention 0.894 → 0.979 |
 | `mlx-lm` vanished after install | `uv run` syncs the project env exactly and removed it | Run training tools via `uvx` in an isolated env |
 | UI kept talking to stale code after restart | Graceful shutdown hung on an in-flight request; new server couldn't bind the port | `run.sh` waits for the port to free, then force-kills |
 
@@ -400,7 +410,7 @@ flowchart LR
 | 17 | Prompt injection | `app/security.py` + policy gate |
 | 18 | PII redaction | `Redactor`, Security page |
 | 19 | Fine-tune vs RAG vs prompting | Playbook |
-| 20 | LoRA on 5K examples | `scripts/lora/` |
+| 20 | LoRA on 5K examples | `scripts/lora/`: fair baseline 9.6% → LoRA 100% on synthetic held-out data (leakage caveat in the README) |
 | 21 | Serving at scale | §9, Latency Lab |
 | 22 | SSE and disconnects | `/chat`, Stop button |
 | 23 | Multi-agent tracing | `app/workflow.py`, Traces page |

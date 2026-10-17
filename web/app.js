@@ -791,7 +791,7 @@ VIEWS.evals = async (main) => {
     <div class="grid g2">
       <div class="card"><h3>Run an eval</h3>
         <div class="field"><label class="lbl">Configuration</label><select class="input" id="eCfg">${opts([
-          ['{}', "Production (hybrid + rerank, prompt v3)"], ['{"rerank":false}', "No reranker"], ['{"mode":"dense","rerank":false}', "Dense only"],
+          ['{}', "Production (hybrid + rerank, active prompt)"], ['{"rerank":false}', "No reranker"], ['{"mode":"dense","rerank":false}', "Dense only"],
           ['{"prompt_version":2}', "Prompt v2 (the bad one)"]], "{}")}</select></div>
         <div class="field"><label class="lbl">Questions</label><input class="input" id="eN" type="number" value="6" min="2" max="47"></div>
         <button class="btn primary" id="eGo">Run</button><p class="small muted">≈15–25 s per question on local 8B (answer + grounding + judge).</p><div id="eOut"></div></div>

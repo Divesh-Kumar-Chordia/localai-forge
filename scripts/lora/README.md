@@ -2,8 +2,18 @@
 
 Optional. The app does not depend on it. It takes about 20–40 minutes end to end on an M-series Mac.
 
-> **Status:** data generation and the base-model download are verified. Training wasn't run on the reference machine
-> (16 GB, heavy swap, slow PyPI connection while installing `mlx`). Run it on a machine with free RAM.
+> **Measured on an M5 / 16 GB:** 300 iters, batch 8, 8 layers → 2.8M trainable params (0.23%), ~280 tok/s,
+> validation loss 3.67 → ~0.000 in about 20 minutes.
+>
+> | 250 held-out tickets | Valid JSON | All 3 fields correct | ms / ticket |
+> |---|---|---|---|
+> | Base 1B, schema only | 96.8% | 0% | 342 |
+> | Base 1B, label set + example in prompt (fair baseline) | 86.0% | 9.6% | 519 |
+> | **LoRA-tuned 1B** | **100%** | **100%** | **308** |
+>
+> **Read this critically:** the test split comes from the same templates as the training data, so 100% measures
+> template learning, not real-world accuracy. Validate on real tickets before trusting it. The latency win is
+> real either way: the tuned model doesn't need the long label prompt.
 
 ```bash
 # 1. Data: 5,000 synthetic ticket-routing examples (4500 / 250 / 250)

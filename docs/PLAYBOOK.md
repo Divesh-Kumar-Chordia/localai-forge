@@ -229,7 +229,7 @@ Prompting "return JSON" alone gives ~95% validity on small models, which isn't e
 
 **Process.** Offline in CI as a gate; online on sampled traffic, with humans reviewing disagreements.
 
-**Real numbers from this app (47 questions, prompt v3):** pass 80.9%, faithfulness 0.973, hallucination 4.3%, abstention accuracy 0.894, citation coverage 0.95. Reading every failure by hand found the *real* problem: 5 over-abstentions where the answer had to be inferred, not retrieval. Three "failures" were bugs in my own eval harness. **Always read the failures before trusting the number.**
+**Real numbers from this app (47 questions, prompt v3):** pass 80.9%, faithfulness 0.973, hallucination 4.3%, abstention accuracy 0.894, citation coverage 0.95. Reading every failure by hand found the *real* problem: 5 over-abstentions where the answer had to be inferred, not retrieval. Three "failures" were bugs in my own eval harness. **Always read the failures before trusting the number.** A targeted prompt fix (v4: answer implied facts) then went through the full gate: **pass 85.1% → 95.7%**, abstention 0.894 → 0.979, latency p50 12.6 s → 8.5 s, at the cost of faithfulness 1.0 → 0.972.
 
 **Show in app.** Evals page (47 questions, A/B, history), Retrieval benchmark, Prompt gate.
 
@@ -290,7 +290,9 @@ Redact **before** logs, traces, caches and embeddings too. Tune for recall (a mi
 - **Evaluate** against the prompted baseline on a held-out set, and check general capability didn't regress.
 - **Ship:** merge the adapter or serve multi-LoRA (vLLM/LoRAX), quantize to GGUF for Ollama.
 
-**On this Mac.** `scripts/lora/` generates 5K synthetic ticket-routing examples and has the MLX-LM commands (LoRA on Apple Silicon, ~10–20 min for 1B), then imports into Ollama with a Modelfile `ADAPTER` line.
+**Done on this Mac (MLX, ~20 min).** Llama 3.2 1B (4-bit), LoRA on 8 layers = 2.8M trainable params (0.23%), 300 iters. On 250 held-out tickets, all-three-fields accuracy: base with schema only **0%**, base with the label set + an example in the prompt (*the fair baseline*) **9.6%**, LoRA **100%**, and 40% faster (308 vs 519 ms) because the label prompt is gone.
+
+**What to say about the 100%:** the test split comes from the same templates as the training data, so it measures template learning (leakage), not production accuracy. Before shipping: evaluate on real tickets, add paraphrased and noisy inputs, and compare against a prompted 8B. *Always compare against a fair baseline: "0% → 100%" was the unfair one.*
 
 **Follow-ups.** Overfitting (val loss up, memorized outputs). Catastrophic forgetting (mix in general data). LoRA vs full fine-tune: LoRA is ~0.1–1% of params, swappable, nearly the same quality for narrow tasks.
 

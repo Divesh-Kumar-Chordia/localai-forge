@@ -86,7 +86,7 @@ Browser (vanilla JS, no build) ──HTTP/SSE──▶ FastAPI
   | Hybrid + rerank | 0.930 |
   | Legal chunking + hybrid + rerank | **0.977** |
 
-- End-to-end eval (47 golden questions, prompt v3): **80.9% pass**, faithfulness 0.973, hallucination 4.3%, abstention accuracy 0.894. LLM judge calibrated against human labels: **κ 0.80, 0 false passes**.
+- End-to-end eval (47 golden questions): **95.7% pass** with prompt v4 (up from 85.1% for v3, promoted through the eval gate), faithfulness 0.972, abstention accuracy 0.979, latency p50 8.5 s. LLM judge calibrated against human labels: **κ 0.80, 0 false passes**.
 - Real failures found while building it (runaway JSON generation, a torch/MPS segfault, semantic agent loops, stale cache keys, swap-induced latency, and more), each with its fix: see [System design §8](docs/SYSTEM_DESIGN.md#8-measured-results-apple-m5-16-gb).
 
 ## Repository layout

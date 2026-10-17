@@ -178,7 +178,7 @@ Conversation:
 }
 
 
-DEFAULT_ACTIVE = {"rag_answer": 3, "grounding": 2, "judge_facts": 2}  # v4 is promoted through the eval gate, not by default
+DEFAULT_ACTIVE = {"rag_answer": 4, "grounding": 2, "judge_facts": 2}  # v4 promoted via the full eval gate
 
 
 def seed() -> None:

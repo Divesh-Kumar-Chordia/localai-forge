@@ -1,0 +1,27 @@
+{
+  "n": 250,
+  "base 1B, schema only": {
+    "valid_json": 0.968,
+    "category": 0.0,
+    "priority": 0.168,
+    "team": 0.0,
+    "all_fields": 0.0,
+    "ms_per_ticket": 342
+  },
+  "base 1B, labels + example in prompt": {
+    "valid_json": 0.86,
+    "category": 0.44,
+    "priority": 0.376,
+    "team": 0.288,
+    "all_fields": 0.096,
+    "ms_per_ticket": 519
+  },
+  "LoRA-tuned 1B": {
+    "valid_json": 1.0,
+    "category": 1.0,
+    "priority": 1.0,
+    "team": 1.0,
+    "all_fields": 1.0,
+    "ms_per_ticket": 308
+  }
+}

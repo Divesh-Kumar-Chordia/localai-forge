@@ -10,3 +10,4 @@ scripts/lora/data/
 scripts/lora/adapters/
 .env
 .DS_Store
+scripts/lora/train.log
