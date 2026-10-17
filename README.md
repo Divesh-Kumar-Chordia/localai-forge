@@ -1,5 +1,7 @@
 # LocalAI Forge
 
+[![ci](https://github.com/Divesh-Kumar-Chordia/localai-forge/actions/workflows/ci.yml/badge.svg)](https://github.com/Divesh-Kumar-Chordia/localai-forge/actions/workflows/ci.yml)
+
 **A private, fully local RAG + agent platform, built as a glass box.** It answers questions over a company's own documents with sentence-level citations, runs tool-using agents with deterministic guardrails, and makes every production concern visible and measurable: retrieval, caching, routing, hallucination checks, evals, prompt rollback, tracing, PII redaction, and prompt-injection defense.
 
 Runs entirely on your machine with [Ollama](https://ollama.com) (Llama 3.1 8B / Llama 3.2 3B + nomic-embed-text). No API keys, and no data leaves the machine.
@@ -97,6 +99,9 @@ data/       corpus/ (fictional Acme Cloud KB + contracts + 1 poisoned doc), eval
 scripts/    sse_client.py (disconnect demo), agent_demo.py, lora/ (5K-example MLX LoRA kit)
 docs/       SYSTEM_DESIGN.md, PLAYBOOK.md, img/
 ```
+
+## Tests
+`uv run pytest -q` runs 24 deterministic tests (chunking, RRF, PII/Luhn, injection filters, cache guards, judge rules, loop detection…). They need no LLM, so CI runs them on every push.
 
 ## Docker
 `docker compose up --build` runs the app in a container and talks to Ollama on the host. Ollama inside Docker on macOS has no GPU access and would run on CPU.
